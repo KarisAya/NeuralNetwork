@@ -1,0 +1,23 @@
+[project]
+name = "NeuralNetwork"
+version = "0.1.0"
+description = "poetry run pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126"
+authors = [{ name = "KarisAya", email = "1048827424@qq.com" }]
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "numpy (>=2.2.3,<3.0.0)",
+    "matplotlib (>=3.10.1,<4.0.0)",
+    "scikit-learn (>=1.6.1,<2.0.0)",
+    "scipy (>=1.15.2,<2.0.0)",
+    "transformers (>=4.49.0,<5.0.0)",
+    "datasets (>=3.4.1,<4.0.0)",
+    "jupyterlab-language-pack-zh-cn (>=4.3.post3,<5.0)",
+    "jieba-fast (>=0.53,<0.54)",
+    "jupyter (>=1.1.1,<2.0.0)",
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
