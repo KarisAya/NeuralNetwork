@@ -27,7 +27,7 @@ class SelfMultiHeadAttention(torch.nn.Module):
         self.head_size = head_size
         self.scale = self.head_size**-0.5
 
-    def forward(self, x: torch.Tensor, mask: torch.Tensor):
+    def forward(self, x: torch.Tensor, mask: torch.Tensor | None = None):
         q, k, v = self.qkv_linear.forward(x).chunk(3, dim=-1)
         # 把 q, v 的形状从 (B, T, emb_size) 变为 (B, n_head, T, head_size)
         # 把 k 的形状从 (B, T, emb_size) 变为 (B, n_head, head_size, T)
@@ -36,7 +36,7 @@ class SelfMultiHeadAttention(torch.nn.Module):
         v = v.unflatten(dim=-1, sizes=(self.n_head, self.head_size)).transpose(-3, -2)
         scores = (q @ k) * self.scale
         scores = scores.masked_fill(mask, float("-inf"))
-        w_att = torch.softmax(scores, dim=-1)
+        w_att = scores.softmax(dim=-1).masked_fill(mask, 0)
         # 此时 attn_output 的形状为 (B, n_head, T, head_size)
         attn_output = w_att @ v
         # 恢复 attn_output 的形状为 (B, T, emb_size)
@@ -66,7 +66,7 @@ class CrossMultiHeadAttention(torch.nn.Module):
         v = v.unflatten(dim=-1, sizes=(self.n_head, self.head_size)).transpose(-3, -2)
         scores = (q @ k) * self.scale
         scores = scores.masked_fill(mask, float("-inf"))
-        w_att = torch.softmax(scores, dim=-1)
+        w_att = scores.softmax(dim=-1).masked_fill(mask, 0)
         attn_output = w_att @ v
         attn_output = attn_output.transpose(-3, -2).flatten(start_dim=-2)
         mha = self.dp(self.proj(attn_output))
@@ -144,13 +144,27 @@ class TransformerEDM(torch.nn.Module):
     def forward(self, x: torch.Tensor, y: torch.Tensor):
         Tx = x.size(-1)
         Ty = y.size(-1)
+        # 词嵌入和位置编码
         enc_inputs: torch.Tensor = self.enc_token_emb(x) + self.enc_position_emb(self.position[:Tx])
         dec_inputs: torch.Tensor = self.dec_token_emb(y) + self.dec_position_emb(self.position[:Ty])
-        enc_padding_mask = (x == self.padding_idx).unsqueeze(-2)
-        dec_padding_mask = (y == self.padding_idx).unsqueeze(-1)
-        dec_cross_mask = dec_padding_mask | enc_padding_mask
+        # 掩码处理
+        x_padding_mask = x == self.padding_idx
+        y_padding_mask = y == self.padding_idx
+        enc_self_mask = (x_padding_mask.unsqueeze(-2) | x_padding_mask.unsqueeze(-1)).unsqueeze(-3)
+        dec_self_mask = y_padding_mask.unsqueeze(-2) | y_padding_mask.unsqueeze(-1)
+        dec_self_mask = (dec_self_mask | self.mask[:Ty, :Ty]).unsqueeze(-3)
+        dec_cross_mask = x_padding_mask.unsqueeze(-2).unsqueeze(-2)
+        # 多层编解码器
         for enc_block, dec_block in self.blocks:
-            enc_inputs = enc_block(enc_inputs, mask=enc_padding_mask.unsqueeze(-1))
-            dec_inputs = dec_block(dec_inputs, enc_inputs, dec_padding_mask | self.mask[:Ty, :Ty], dec_cross_mask.unsqueeze(-3))
+            enc_inputs = enc_block(enc_inputs, enc_self_mask)
+            dec_inputs = dec_block(dec_inputs, enc_inputs, dec_self_mask, dec_cross_mask)
         out = self.dec_lm(self.ln(dec_inputs))
         return out
+
+
+model = TransformerEDM(100, 100, 16, 4, 2, 512)
+inputs = torch.randint(1, 100, (16, 10))
+targets = torch.randint(1, 100, (16, 15))
+
+
+print(model(inputs, targets))
