@@ -6,3 +6,4 @@ dist
 MNIST
 model.pth
 .ipynb_checkpoints
+*.lock
